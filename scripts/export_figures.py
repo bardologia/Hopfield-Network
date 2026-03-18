@@ -6,8 +6,8 @@ and saves each image to  figures/<nn>_<slug>.png  with a descriptive name.
 
 import json, base64, pathlib, re, sys
 
-NOTEBOOK = pathlib.Path(r"c:\Users\vice_vi\Desktop\Boltzman Machines\notebooks\hopfield_demo.ipynb")
-OUT_DIR  = pathlib.Path(r"c:\Users\vice_vi\Desktop\Boltzman Machines\figures")
+NOTEBOOK = pathlib.Path(r"c:\Users\vice_vi\Desktop\Hopfield Network\notebooks\hopfield_demo.ipynb")
+OUT_DIR  = pathlib.Path(r"c:\Users\vice_vi\Desktop\Hopfield Network\figures")
 
 # Map code-cell execution order → descriptive filename slug
 SLUG_MAP = {

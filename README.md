@@ -9,222 +9,50 @@
 ## Table of Contents
 
 1. [Abstract](#abstract)
-2. [Theoretical Background](#theoretical-background)
-3. [Project Structure](#project-structure)
-4. [Implementation Details](#implementation-details)
-5. [Environment & Reproducibility](#environment--reproducibility)
-6. [Usage](#usage)
-7. [Experiments](#experiments)
-8. [References](#references)
+2. [Model Definition & Pattern Storage](#1-model-definition--pattern-storage)
+3. [Recall Dynamics & Noise Robustness](#2-recall-dynamics--noise-robustness)
+4. [Energy Function & Trajectory Analysis](#3-energy-function--trajectory-analysis)
+5. [Weight Matrix Structure](#4-weight-matrix-structure)
+6. [Pattern Overlap Dynamics](#5-pattern-overlap-dynamics)
+7. [Asynchronous vs. Synchronous Updates](#6-asynchronous-vs-synchronous-updates)
+8. [Storage Capacity](#7-storage-capacity)
+9. [Hebbian vs. Storkey Learning](#8-hebbian-vs-storkey-learning)
+10. [Basin of Attraction Analysis](#9-basin-of-attraction-analysis)
+11. [Spurious States](#10-spurious-states)
+12. [Letter Pattern Recognition](#11-letter-pattern-recognition)
+13. [Convergence Speed Analysis](#12-convergence-speed-analysis)
+14. [Project Structure & Usage](#project-structure--usage)
+15. [References](#references)
 
 ---
 
 ## Abstract
 
-This repository provides a self-contained implementation of the **discrete Hopfield network** (Hopfield, 1982), a canonical energy-based model that functions as a content-addressable (associative) memory. The codebase supports two learning rules—classical Hebbian learning and the Storkey incremental rule—as well as both asynchronous (sequential) and synchronous (parallel) update dynamics. Accompanying analysis tools enable full energy landscape enumeration (for small networks), spurious state detection, basin-of-attraction estimation, and storage capacity benchmarking. All results are presented in an interactive Jupyter notebook with publication-ready figures.
+This repository provides a self-contained implementation of the **discrete Hopfield network** (Hopfield, 1982), a canonical energy-based model that functions as a content-addressable (associative) memory. The codebase supports two learning rules—classical Hebbian learning and the Storkey incremental rule—as well as both asynchronous (sequential) and synchronous (parallel) update dynamics. Accompanying analysis tools enable full energy landscape enumeration (for small networks), spurious state detection, basin-of-attraction estimation, and storage capacity benchmarking.
+
+All figures below were generated from the interactive notebook with $N = 50$ neurons, $P = 6$ stored patterns, and seed $= 42$. At this configuration the network operates at $\approx 94\%$ of its theoretical capacity, producing non-trivial dynamics that reveal the network's true behaviour under stress.
 
 ---
 
-## Theoretical Background
-
-### 1. Model Definition
+## 1. Model Definition & Pattern Storage
 
 A Hopfield network consists of $N$ binary neurons with states $s_i \in \{-1, +1\}$, interconnected by a symmetric weight matrix $W$ satisfying $w_{ij} = w_{ji}$ and $w_{ii} = 0$.
 
-### 2. Learning Rules
+### Hebbian Learning Rule
 
-**Hebbian (outer-product) rule.** &ensp; Given $P$ patterns $\boldsymbol{\xi}^{\mu} \in \{-1,+1\}^N$, the weights are set as
+Given $P$ pattern vectors $\boldsymbol{\xi}^{\mu} \in \{-1,+1\}^N$, the weight matrix is constructed via the outer-product rule:
 
 $$
 w_{ij} = \frac{1}{N} \sum_{\mu=1}^{P} \xi_i^{\mu}\, \xi_j^{\mu}, \qquad w_{ii} = 0.
 $$
 
-**Storkey incremental rule.** &ensp; Patterns are incorporated one at a time. At step $\mu$ the weight update is
+In matrix form:
 
 $$
-w_{ij}^{(\mu)} = w_{ij}^{(\mu-1)} + \frac{1}{N}\!\left( \xi_i^{\mu}\xi_j^{\mu} - \xi_i^{\mu}\,h_{j,i}^{(\mu-1)} - h_{i,j}^{(\mu-1)}\,\xi_j^{\mu} \right),
+W = \frac{1}{N} \sum_{\mu=1}^{P} \boldsymbol{\xi}^{\mu} \left(\boldsymbol{\xi}^{\mu}\right)^\top, \quad \mathrm{diag}(W) = 0.
 $$
 
-where $h_{i,j}^{(\mu-1)} = \sum_{k \neq j} w_{ik}^{(\mu-1)}\,\xi_k^{\mu}$ is the local field at neuron $i$ excluding the contribution of neuron $j$ (Storkey, 1997).
-
-### 3. Recall Dynamics
-
-Retrieval proceeds by iterating the update rule
-
-$$
-s_i(t+1) = \operatorname{sgn}\!\left(\sum_{j} w_{ij}\, s_j(t)\right)
-$$
-
-until convergence (fixed point). Two schedules are implemented:
-
-| Mode | Description |
-|---|---|
-| **Asynchronous** | Neurons are updated one at a time in random order. Guaranteed to converge to a fixed point. |
-| **Synchronous** | All neurons are updated simultaneously. May produce limit cycles of period 2. |
-
-### 4. Energy Function
-
-The Lyapunov (energy) function associated with the network is
-
-$$
-E(\mathbf{s}) = -\frac{1}{2} \sum_{i \neq j} w_{ij}\, s_i\, s_j = -\frac{1}{2}\, \mathbf{s}^\top W\, \mathbf{s}.
-$$
-
-Under asynchronous updates, $E$ is non-increasing at each step, guaranteeing convergence to a local minimum (Hopfield, 1982).
-
-### 5. Pattern Overlap
-
-The overlap between a network state $\mathbf{s}$ and stored pattern $\boldsymbol{\xi}^{\mu}$ is defined as
-
-$$
-m^{\mu} = \frac{1}{N} \sum_{i=1}^{N} \xi_i^{\mu}\, s_i \;\in [-1,\,1].
-$$
-
-A value of $m^{\mu} = 1$ indicates perfect recall, while $m^{\mu} = -1$ corresponds to retrieval of the complement pattern.
-
-### 6. Storage Capacity
-
-The theoretical storage capacity of a Hopfield network with Hebbian learning is
-
-$$
-P_{\max} \approx \frac{N}{2 \ln N}
-$$
-
-beyond which cross-talk noise causes catastrophic recall failure (Amit *et al.*, 1985). The Storkey rule raises this bound to $P_{\max} \approx N / \sqrt{2 \ln N}$ (Storkey, 1997).
-
----
-
-## Project Structure
-
-```
-Boltzman Machines/
-├── hopfield/                     # Python package
-│   ├── __init__.py               # Public API exports
-│   ├── network.py                # HopfieldNetwork class (Hebbian & Storkey learning, recall)
-│   ├── energy.py                 # EnergyAnalyzer — landscape analysis, attractor search
-│   ├── visualization.py          # HopfieldVisualizer — publication-quality plots
-│   └── utils.py                  # Pattern generators, noise injection, similarity metrics
-├── notebooks/
-│   └── hopfield_demo.ipynb       # Interactive experiments & figures
-├── figures/                      # Pre-rendered experiment figures (see §Experiments)
-├── scripts/
-│   └── export_figures.py         # Extract PNGs from executed notebook
-├── requirements.txt              # Pinned Python dependencies
-└── README.md                     # This document
-```
-
----
-
-## Implementation Details
-
-### `HopfieldNetwork` (network.py)
-
-| Method | Description |
-|---|---|
-| `train(patterns)` | Store patterns via Hebbian outer-product rule |
-| `train_storkey(patterns)` | Store patterns via Storkey incremental rule |
-| `recall(state, mode, ...)` | Run async/sync dynamics; optionally record full trajectory |
-| `energy(state)` | Compute the Lyapunov energy $E(\mathbf{s})$ |
-| `overlap_with_patterns(state)` | Return overlap vector $\mathbf{m}$ with all stored patterns |
-| `theoretical_capacity` | $P_{\max} \approx N / (2\ln N)$ |
-
-### `EnergyAnalyzer` (energy.py)
-
-| Method | Description |
-|---|---|
-| `energy_along_path(history)` | Energy trajectory during recall |
-| `stored_pattern_energies()` | Energies of all stored attractors |
-| `is_fixed_point(state)` | Stability check under synchronous update |
-| `find_spurious_states(n_probes)` | Monte-Carlo search for spurious attractors |
-| `enumerate_all_energies()` | Full $2^N$ enumeration (feasible for $N \leq 18$) |
-| `find_all_minima()` | All local minima by exhaustive search |
-| `estimate_basin_sizes(n_probes)` | Basin-of-attraction fractions via random probing |
-
-### `HopfieldVisualizer` (visualization.py)
-
-Provides methods for pattern grids, weight matrix heatmaps, energy and overlap trajectories, recall comparisons, basin bar charts, energy histograms, and capacity curves—all formatted for inclusion in academic reports.
-
-### Utility Functions (utils.py)
-
-- `generate_random_patterns` — random bipolar vectors
-- `make_letter_patterns` — hand-crafted 5 × 5 letter bitmaps (A, C, H, I, L, T, X, O)
-- `make_shape_patterns` — geometric shapes (bars, cross, checkerboard, diagonal, border)
-- `add_noise` — stochastic bit-flipping at a specified noise level
-- `hamming_distance`, `overlap` — similarity metrics
-
----
-
-## Environment & Reproducibility
-
-### Prerequisites
-
-- Python ≥ 3.9
-
-### Installation
-
-```bash
-# 1. Create and activate a virtual environment (recommended)
-python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# macOS / Linux
-source .venv/bin/activate
-
-# 2. Install dependencies
-pip install -r requirements.txt
-```
-
-All random number generators in the codebase accept an explicit `seed` parameter or use `numpy.random.default_rng` for reproducible experiments.
-
----
-
-## Usage
-
-### Interactive Notebook
-
-```bash
-jupyter notebook notebooks/hopfield_demo.ipynb
-```
-
-### Programmatic Usage
-
-```python
-import numpy as np
-from hopfield import HopfieldNetwork, EnergyAnalyzer, HopfieldVisualizer
-from hopfield.utils import generate_random_patterns, add_noise
-
-# Initialise network
-net = HopfieldNetwork(n_neurons=100)
-
-# Store random patterns
-patterns = generate_random_patterns(n_patterns=3, n_neurons=100, seed=42)
-net.train(patterns)
-
-# Create a noisy probe and recall
-probe = add_noise(patterns[0], noise_level=0.2)
-recalled, info = net.recall(probe, mode="async", record_history=True)
-
-# Analyse energy landscape
-analyzer = EnergyAnalyzer(net)
-print("Pattern energies:", analyzer.stored_pattern_energies())
-
-# Visualise
-viz = HopfieldVisualizer(net, grid_shape=(10, 10))
-viz.show_recall_comparison(patterns[0], probe, recalled)
-viz.plot_energy_trajectory(info["energy_history"])
-```
-
----
-
-## Experiments
-
-The accompanying notebook ([hopfield_demo.ipynb](notebooks/hopfield_demo.ipynb)) contains the following experiments. All figures were generated with the settings listed in the notebook's configuration cell ($N = 100$, $P = 6$, seed $= 42$).
-
----
-
-### Exp. 1 — Pattern Storage (Hebbian Learning)
-
-Six random bipolar patterns stored via the outer-product rule.
+Each stored pattern becomes a fixed point (attractor) of the network dynamics — a local minimum of the energy landscape.
 
 <p align="center">
   <img src="figures/01_stored_patterns.png" width="85%" />
@@ -232,9 +60,23 @@ Six random bipolar patterns stored via the outer-product rule.
 
 ---
 
-### Exp. 2 — Pattern Recall from Noisy Input
+## 2. Recall Dynamics & Noise Robustness
 
-Recall quality at increasing noise levels ($\eta = 10\%$–$50\%$). The network recovers the original pattern up to moderate corruption.
+Retrieval from a corrupted probe $\tilde{\mathbf{s}}$ (obtained by flipping a fraction $\eta$ of bits) proceeds by iterating the update rule:
+
+$$
+s_i(t+1) = \mathrm{sgn}\!\left(\sum_{j=1}^{N} w_{ij}\, s_j(t)\right)
+$$
+
+until the state vector $\mathbf{s}(t)$ converges to a fixed point. Recall quality is measured by the **overlap** between the converged state and the target pattern:
+
+$$
+m^{\mu} = \frac{1}{N} \sum_{i=1}^{N} \xi_i^{\mu}\, s_i \;\in [-1,\,1].
+$$
+
+A value of $m^{\mu} = 1$ indicates perfect recall; $m^{\mu} = -1$ retrieves the complement; $m^{\mu} \approx 0$ means the state is uncorrelated with that pattern.
+
+With the network near capacity ($P/P_{\max} \approx 94\%$), recall from noise levels $\eta = 20\%$–$50\%$ becomes genuinely challenging — cross-talk from other patterns competes with the target signal:
 
 <p align="center">
   <img src="figures/02_recall_noise_levels.png" width="70%" />
@@ -242,9 +84,23 @@ Recall quality at increasing noise levels ($\eta = 10\%$–$50\%$). The network 
 
 ---
 
-### Exp. 3 — Energy Trajectory During Recall
+## 3. Energy Function & Trajectory Analysis
 
-The Lyapunov energy $E(\mathbf{s})$ decreases monotonically under asynchronous updates, confirming convergence to a local minimum.
+The Lyapunov (energy) function is a scalar function of the state vector:
+
+$$
+E(\mathbf{s}) = -\frac{1}{2} \sum_{i \neq j} w_{ij}\, s_i\, s_j = -\frac{1}{2}\, \mathbf{s}^\top W\, \mathbf{s}.
+$$
+
+Under asynchronous updates, $E$ is **non-increasing** at every step. When neuron $i$ flips from $s_i$ to $s_i'$, the energy change is:
+
+$$
+\Delta E = -(s_i' - s_i) \sum_{j=1}^{N} w_{ij}\, s_j = -(s_i' - s_i)\, h_i
+$$
+
+where $h_i = \sum_j w_{ij} s_j$ is the local field. Since the update rule sets $s_i' = \mathrm{sgn}(h_i)$, we have $(s_i' - s_i) \cdot h_i \geq 0$, hence $\Delta E \leq 0$. This guarantees convergence to a local minimum.
+
+Each stored pattern $\boldsymbol{\xi}^{\mu}$ sits at a local minimum. The trajectory below shows energy decreasing over multiple steps as the network recovers from 35% noise:
 
 <p align="center">
   <img src="figures/03_energy_trajectory.png" width="60%" />
@@ -252,9 +108,13 @@ The Lyapunov energy $E(\mathbf{s})$ decreases monotonically under asynchronous u
 
 ---
 
-### Exp. 4 — Weight Matrix Structure
+## 4. Weight Matrix Structure
 
-Heatmap of the learned weight matrix $W \in \mathbb{R}^{N \times N}$. Symmetry ($w_{ij} = w_{ji}$) and zero diagonal are clearly visible.
+The weight matrix $W \in \mathbb{R}^{N \times N}$ encodes the network's memory. Its key structural properties:
+
+- **Symmetric**: $w_{ij} = w_{ji}$ (undirected connections)
+- **Zero diagonal**: $w_{ii} = 0$ (no self-connections)
+- **Scale**: Off-diagonal entries scale as $w_{ij} \sim \mathcal{O}(P/N)$
 
 <p align="center">
   <img src="figures/04_weight_matrix.png" width="55%" />
@@ -262,9 +122,15 @@ Heatmap of the learned weight matrix $W \in \mathbb{R}^{N \times N}$. Symmetry (
 
 ---
 
-### Exp. 5 — Overlap Dynamics
+## 5. Pattern Overlap Dynamics
 
-Overlap $m^{\mu}(t)$ with each stored pattern during recall. The target pattern's overlap converges to $+1$ while others remain near $0$.
+During recall, the overlap vector $\mathbf{m}(t) = (m^1(t), \dots, m^P(t))^\top$ tracks alignment with every stored pattern:
+
+$$
+m^{\mu}(t) = \frac{1}{N} \sum_{i=1}^{N} s_i(t)\, \xi_i^{\mu} = \frac{1}{N}\, \mathbf{s}(t) \cdot \boldsymbol{\xi}^{\mu} \quad \in [-1,\,1].
+$$
+
+The target pattern's overlap rises toward $+1$ while competing patterns remain near $0$. Near capacity, this separation is gradual — the network must work through cross-talk noise over several update sweeps:
 
 <p align="center">
   <img src="figures/05_overlap_dynamics.png" width="60%" />
@@ -272,15 +138,25 @@ Overlap $m^{\mu}(t)$ with each stored pattern during recall. The target pattern'
 
 ---
 
-### Exp. 6 — Asynchronous vs. Synchronous Dynamics
+## 6. Asynchronous vs. Synchronous Updates
 
-Energy descent and state filmstrips for both update schedules. Asynchronous updates guarantee monotonic energy decrease.
+Two update schedules are implemented:
+
+**Asynchronous** — Pick neuron $i$ at random, compute $h_i = \sum_j w_{ij}\, s_j$, update $s_i \leftarrow \mathrm{sgn}(h_i)$. Repeat for all neurons in a random permutation. Guarantees $\Delta E \leq 0$ at every single-neuron flip, so convergence to a fixed point is assured.
+
+**Synchronous** — Update the entire state vector in one step:
+
+$$
+\mathbf{s}(t+1) = \mathrm{sgn}\!\left(W\, \mathbf{s}(t)\right)
+$$
+
+This is faster per iteration but does **not** guarantee monotonic energy descent and may produce period-2 limit cycles.
 
 <p align="center">
   <img src="figures/06_async_vs_sync_dynamics.png" width="85%" />
 </p>
 
-Quantitative comparison across noise levels (overlap, convergence speed, wall time, convergence rate):
+Quantitative comparison across noise levels — overlap, convergence speed, wall time, and convergence rate:
 
 <p align="center">
   <img src="figures/07_async_vs_sync_comparison.png" width="85%" />
@@ -288,9 +164,19 @@ Quantitative comparison across noise levels (overlap, convergence speed, wall ti
 
 ---
 
-### Exp. 7 — Storage Capacity Curve
+## 7. Storage Capacity
 
-Empirical recall success rate vs. number of stored patterns ($N = 200$). The dashed line marks the theoretical bound $P_{\max} \approx N/(2 \ln N)$.
+The load ratio $\alpha = P/N$ determines whether the network can reliably store and retrieve patterns.
+
+The theoretical capacity under Hebbian learning is:
+
+$$
+P_{\max} \approx \frac{N}{2 \ln N}
+$$
+
+beyond which cross-talk noise causes catastrophic recall failure (Amit *et al.*, 1985). At the critical load $\alpha_c \approx 0.138$, overlap with all stored patterns collapses to $\approx 0$.
+
+Empirical recall success rate vs. number of stored patterns ($N = 150$). The dashed line marks $P_{\max}$:
 
 <p align="center">
   <img src="figures/08_storage_capacity.png" width="60%" />
@@ -298,9 +184,28 @@ Empirical recall success rate vs. number of stored patterns ($N = 200$). The das
 
 ---
 
-### Exp. 8 — Hebbian vs. Storkey Learning
+## 8. Hebbian vs. Storkey Learning
 
-The Storkey incremental rule sustains high recall accuracy well beyond the Hebbian capacity limit.
+The **Storkey incremental rule** (1997) updates weights pattern-by-pattern, accounting for cross-talk via local fields:
+
+$$
+w_{ij}^{(\mu)} = w_{ij}^{(\mu-1)} + \frac{1}{N}\!\left( \xi_i^{\mu}\xi_j^{\mu} - \xi_i^{\mu}\,h_{j,i}^{(\mu-1)} - h_{i,j}^{(\mu-1)}\,\xi_j^{\mu} \right),
+$$
+
+where $h_{i,j}^{(\mu-1)} = \sum_{k \neq j} w_{ik}^{(\mu-1)}\,\xi_k^{\mu}$ is the local field at neuron $i$ excluding the contribution of neuron $j$.
+
+This raises the capacity bound to:
+
+$$
+P_{\max}^{\text{Storkey}} \approx \frac{N}{\sqrt{2 \ln N}}
+$$
+
+| Rule | Capacity | Mechanism |
+|---|---|---|
+| **Hebbian** | $\approx 0.138\, N$ | Single outer-product sum |
+| **Storkey** | $\approx N / \sqrt{2 \ln N}$ | Incremental, subtracts cross-talk via local fields |
+
+The Storkey rule sustains high recall accuracy well beyond the Hebbian capacity limit:
 
 <p align="center">
   <img src="figures/09_hebbian_vs_storkey.png" width="65%" />
@@ -308,9 +213,13 @@ The Storkey incremental rule sustains high recall accuracy well beyond the Hebbi
 
 ---
 
-### Exp. 9 — Basin of Attraction Estimation
+## 9. Basin of Attraction Analysis
 
-Fraction of random initial states that converge to each stored pattern, estimated by Monte-Carlo probing ($2\,000$ samples).
+Each stored pattern $\boldsymbol{\xi}^{\mu}$ has a **basin of attraction** — the set of all initial states $\mathbf{s}(0)$ that converge to it under the dynamics. Basin fractions are estimated by Monte-Carlo probing ($2\,000$ random initial states):
+
+- Larger basin → more robust recall
+- Basin fractions shrink as the load ratio $\alpha = P/N$ increases
+- States converging to non-stored vectors are counted as "spurious"
 
 <p align="center">
   <img src="figures/10_basin_of_attraction.png" width="60%" />
@@ -318,9 +227,17 @@ Fraction of random initial states that converge to each stored pattern, estimate
 
 ---
 
-### Exp. 10 — Spurious States
+## 10. Spurious States
 
-Stored patterns (top row) compared with discovered spurious attractors (bottom row) and their overlap vectors.
+Not all fixed points correspond to stored patterns. The energy landscape contains additional attractors:
+
+| Spurious type | Form |
+|---|---|
+| **Negatives** $-\boldsymbol{\xi}^{\mu}$ | Bit-flipped stored pattern (also a fixed point by symmetry of $W$) |
+| **Mixture states** | $\mathrm{sgn}\!\bigl(\pm\boldsymbol{\xi}^1 \pm \boldsymbol{\xi}^2 \pm \boldsymbol{\xi}^3\bigr)$, odd combinations of stored patterns |
+| **Spin-glass states** | Unstructured minima with $m^{\mu} \approx 0\;\;\forall\,\mu$ |
+
+The number of spurious states grows rapidly with $N$ and $P$. Below: stored patterns (top) vs. discovered spurious attractors (bottom) with their overlap vectors:
 
 <p align="center">
   <img src="figures/11_spurious_states.png" width="85%" />
@@ -328,9 +245,9 @@ Stored patterns (top row) compared with discovered spurious attractors (bottom r
 
 ---
 
-### Exp. 11 — Letter Pattern Recognition
+## 11. Letter Pattern Recognition
 
-Hand-crafted $5 \times 5$ letter bitmaps stored and recalled from noisy probes, with per-letter energy trajectories.
+A practical demonstration: hand-crafted $5 \times 5$ letter bitmaps stored as pattern vectors $\boldsymbol{\xi}^{\mu} \in \{-1,+1\}^{25}$ and recalled from 25% noise corruption. Per-letter energy trajectories confirm convergence.
 
 <p align="center">
   <img src="figures/12_letter_patterns_stored.png" width="50%" />
@@ -342,13 +259,85 @@ Hand-crafted $5 \times 5$ letter bitmaps stored and recalled from noisy probes, 
 
 ---
 
-### Exp. 12 — Convergence Speed Heatmap
+## 12. Convergence Speed Analysis
 
-Mean number of update steps to reach a fixed point, as a function of noise level and pattern load.
+The number of update steps $T$ to reach a fixed point depends on both the noise level $\eta$ and the load ratio $\alpha = P/N$:
+
+- Higher noise → probe starts further from any attractor → more steps
+- Higher load → shallower basins and more cross-talk → slower or failed convergence
 
 <p align="center">
   <img src="figures/14_convergence_heatmap.png" width="65%" />
 </p>
+
+---
+
+## Project Structure & Usage
+
+```
+Hopfield Network/
+├── hopfield/                     # Python package
+│   ├── __init__.py               # Public API exports
+│   ├── network.py                # HopfieldNetwork class (Hebbian & Storkey learning, recall)
+│   ├── energy.py                 # EnergyAnalyzer — landscape analysis, attractor search
+│   ├── visualization.py          # HopfieldVisualizer — publication-quality plots
+│   └── utils.py                  # Pattern generators, noise injection, similarity metrics
+├── notebooks/
+│   └── hopfield_demo.ipynb       # Interactive experiments & figures
+├── figures/                      # Pre-rendered experiment figures
+├── scripts/
+│   └── export_figures.py         # Extract PNGs from executed notebook
+├── requirements.txt              # Pinned Python dependencies
+└── README.md                     # This document
+```
+
+### Implementation Summary
+
+| Class / Module | Key Methods |
+|---|---|
+| `HopfieldNetwork` | `train()`, `train_storkey()`, `recall()`, `energy()`, `overlap_with_patterns()` |
+| `EnergyAnalyzer` | `stored_pattern_energies()`, `find_spurious_states()`, `estimate_basin_sizes()`, `enumerate_all_energies()` |
+| `HopfieldVisualizer` | Pattern grids, weight heatmaps, energy/overlap trajectories, capacity curves |
+| `utils` | `generate_random_patterns`, `make_letter_patterns`, `add_noise`, `overlap`, `hamming_distance` |
+
+### Quick Start
+
+```bash
+# 1. Create and activate a virtual environment
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# macOS / Linux
+source .venv/bin/activate
+
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Launch the notebook
+jupyter notebook notebooks/hopfield_demo.ipynb
+```
+
+### Programmatic Usage
+
+```python
+import numpy as np
+from hopfield import HopfieldNetwork, EnergyAnalyzer, HopfieldVisualizer
+from hopfield.utils import generate_random_patterns, add_noise
+
+net = HopfieldNetwork(n_neurons=50)
+patterns = generate_random_patterns(n_patterns=6, n_neurons=50, seed=42)
+net.train(patterns)
+
+probe = add_noise(patterns[0], noise_level=0.35)
+recalled, info = net.recall(probe, mode="async", record_history=True)
+
+analyzer = EnergyAnalyzer(net)
+print("Pattern energies:", analyzer.stored_pattern_energies())
+
+viz = HopfieldVisualizer(net, grid_shape=(5, 10))
+viz.show_recall_comparison(patterns[0], probe, recalled)
+viz.plot_energy_trajectory(info["energy_history"])
+```
 
 ---
 
